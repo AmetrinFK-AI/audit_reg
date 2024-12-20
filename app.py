@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
-from openpyxl.styles import Font
+from openpyxl.styles import Font 
 
 # Заголовок застосунку
 st.title("Аудит регіону")
