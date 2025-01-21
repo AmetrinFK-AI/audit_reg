@@ -11,7 +11,7 @@ st.write("""
 Цей застосунок дозволяє:
 - Завантажити Excel-файл з даними про лоти (очікуються листи "Sheet1" та "Sheet2").
 - Відфільтрувати дані за вказаними компаніями.
-- Показати топ-20 областей за різними показниками.
+- Показати **всі області** за різними показниками.
 - Завантажити результат у форматі XLSX з автопідбором ширини стовпців.
 - **Додатково**:
   - Створити окремий лист для кожної області з топ-20 компаніями за сумою виграних тендерів, 
@@ -42,9 +42,7 @@ companies_to_group = original_target_companies
 
 if uploaded_file:
     try:
-        # ВНИМАНИЕ! Здесь колонки называются именно так, как на вашем скриншоте:
-        # "Поточна сума договорів лота", "Переможець", "Регіон організатора", "Організатор"
-        # Если у вас не совпадает название или регистр, нужно изменить соответствующим образом.
+        # Перевірка та зчитування листів
         data_sheet1 = pd.read_excel(
             uploaded_file,
             sheet_name='Sheet1',
@@ -56,7 +54,7 @@ if uploaded_file:
             usecols=['Поточна сума договорів лота', 'Переможець', 'Регіон організатора']
         )
 
-        # Перевірка стовпців у Sheet1
+        # Перевірка обов’язкових стовпців у Sheet1
         required_columns_sheet1 = [
             'Поточна сума договорів лота',
             'Переможець',
@@ -68,7 +66,7 @@ if uploaded_file:
             st.error(f"Відсутні необхідні стовпці у Sheet1: {', '.join(missing_cols_sheet1)}")
             st.stop()
 
-        # Перевірка стовпців у Sheet2
+        # Перевірка обов’язкових стовпців у Sheet2
         required_columns_sheet2 = [
             'Поточна сума договорів лота',
             'Переможець',
@@ -79,19 +77,19 @@ if uploaded_file:
             st.error(f"Відсутні необхідні стовпці у Sheet2: {', '.join(missing_cols_sheet2)}")
             st.stop()
 
-        # Обробка Sheet1 — колонка "Поточна сума договорів лота"
+        # Обробка Sheet1
         data_sheet1['Поточна сума договорів лота'] = (
             data_sheet1['Поточна сума договорів лота']
             .astype(str)
-            .str.replace('\u00a0', '', regex=True)   # Удаляем неразрывные пробелы
-            .str.replace(',', '.', regex=True)       # Меняем запятую на точку (если нужно)
-            .replace('-', pd.NA)                     # Заменяем '-' на NaN
+            .str.replace('\u00a0', '', regex=True)   # Видаляємо нерозривні пробіли
+            .str.replace(',', '.', regex=True)       # Заміна коми на крапку (за потреби)
+            .replace('-', pd.NA)                     # Заміна '-' на NaN
         )
         data_sheet1['Поточна сума договорів лота'] = pd.to_numeric(
             data_sheet1['Поточна сума договорів лота'], errors='coerce'
         )
 
-        # Аналогичная обработка Sheet2
+        # Обробка Sheet2
         data_sheet2['Поточна сума договорів лота'] = (
             data_sheet2['Поточна сума договорів лота']
             .astype(str)
@@ -103,22 +101,21 @@ if uploaded_file:
             data_sheet2['Поточна сума договорів лота'], errors='coerce'
         )
 
-        # Приводим "Переможець" к базовому виду, обрезая всё после "|", если оно есть
+        # Приводимо назву "Переможець" до базового вигляду (зрізаємо все після "|")
         data_sheet1['Переможець'] = (
             data_sheet1['Переможець']
             .astype(str)
             .str.split('|').str[0]
             .str.strip()
         )
-        # Объединяем 3 компании в "АМЕТРІН ФК"
+        # Об'єднуємо 3 компанії в "АМЕТРІН ФК"
         data_sheet1['Переможець'] = data_sheet1['Переможець'].apply(
             lambda x: grouped_company_name if x in companies_to_group else x
         )
-
-        # Удаляем строки, где Переможець = "-"
+        # Видаляємо рядки, де Переможець = "-"
         data_sheet1 = data_sheet1[data_sheet1['Переможець'] != '-']
 
-        # Те же манипуляции для Sheet2
+        # Те саме для Sheet2
         data_sheet2['Переможець'] = (
             data_sheet2['Переможець']
             .astype(str)
@@ -131,7 +128,7 @@ if uploaded_file:
         data_sheet2 = data_sheet2[data_sheet2['Переможець'] != '-']
 
         # -------------------------------
-        # Дальше — логика формирования итоговых таблиц, как и в оригинальном коде
+        # Логіка формування підсумкових таблиць
         # -------------------------------
 
         # Загальні суми по регіонах за 2024 (Sheet1)
@@ -162,7 +159,7 @@ if uploaded_file:
             st.warning("За вказаними компаніями не знайдено жодного лота.")
             st.stop()
 
-        # Підрахунок суми і кількості тендерів для компанії (2024)
+        # Підрахунок суми та кількості тендерів для компанії (2024)
         companies_region_summary = (
             filtered_data
             .groupby('Регіон організатора', as_index=False)
@@ -172,7 +169,7 @@ if uploaded_file:
             )
         )
 
-        # Мерджим с общими суммами по региону
+        # Мерджимо з загальними сумами по регіонах
         merged_summary = pd.merge(
             total_region_summary,
             companies_region_summary,
@@ -180,7 +177,7 @@ if uploaded_file:
             how='inner'
         )
 
-        # Переименуем колонки
+        # Перейменування стовпців
         merged_summary.rename(columns={
             'Регіон організатора': 'Область',
             'total_sum': '2024',
@@ -188,27 +185,23 @@ if uploaded_file:
             'count_companies': 'Кількість виграних тендерів'
         }, inplace=True)
 
-        # Добавим 2023
+        # Додаємо 2023
         merged_summary['2023'] = merged_summary['Область'].apply(
             lambda x: total_sum_dict_2023.get(x, 0)
         )
 
-        # Добавим колонку "доля" (пример, как было в исходном коде)
+        # Додаємо колонку "доля"
         merged_summary['доля'] = (
             merged_summary['Сума виграних тендерів компаній'] / merged_summary['2024'] * 100
         ).round(2).astype(str) + '%'
 
-        # Оставим только топ-20 областей
-        merged_summary = (
-            merged_summary
-            .sort_values(by='Сума виграних тендерів компаній', ascending=False)
-            .head(20)
-        )
+        # Раніше тут було обмеження top-20, тепер виводимо всі області
+        merged_summary = merged_summary.sort_values(by='Сума виграних тендерів компаній', ascending=False)
 
-        st.subheader("Топ-20 областей")
+        st.subheader("Усі області")
         st.dataframe(merged_summary, use_container_width=True)
 
-        # Подготовка данных для детальных листов
+        # Підготовка даних для детальних листів
         sum_2023_grouped = data_sheet2.groupby(
             ['Регіон організатора', 'Переможець']
         )['Поточна сума договорів лота'].sum().reset_index()
@@ -221,15 +214,15 @@ if uploaded_file:
 
         total_sum_dict_2024 = merged_summary.set_index('Область')['2024'].to_dict()
 
-        # Готовим Excel
+        # Створюємо Excel у пам’яті
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Запишем основную сводку
+            # Записуємо основну зведену таблицю
             merged_summary.to_excel(writer, sheet_name='Data', index=False)
             workbook = writer.book
             worksheet = writer.sheets['Data']
 
-            # Автоподбор ширины столбцов
+            # Автопідбір ширини стовпців
             for i, col in enumerate(merged_summary.columns, start=1):
                 max_length = max(
                     merged_summary[col].astype(str).map(len).max(),
@@ -239,7 +232,7 @@ if uploaded_file:
                     worksheet.cell(row=1, column=i).column_letter
                 ].width = max_length + 2
 
-            # Функции для динамики, долей и прироста
+            # Функції для розрахунків
             def calc_dynamic(row):
                 if row['2023'] == 0:
                     return '0%'
@@ -255,17 +248,16 @@ if uploaded_file:
                     return 0
                 return (share_2024 / share_2023 - 1) * 100
 
-            # Создаём листы по регионам (топ-20 компаний)
+            # Створюємо листи по кожному регіону з топ-20 компаніями
             for region in merged_summary['Область']:
-                region_data = data_sheet1[
-                    data_sheet1['Регіон організатора'] == region
-                ]
+                region_data = data_sheet1[data_sheet1['Регіон організатора'] == region]
+
                 top_companies = (
                     region_data
                     .groupby('Переможець', as_index=False)
                     .agg(total_sum=('Поточна сума договорів лота', 'sum'))
                     .sort_values(by='total_sum', ascending=False)
-                    .head(20)
+                    .head(20)  # Тут залишаємо обмеження топ-20 компаній
                 )
 
                 top_companies.rename(columns={
@@ -273,19 +265,19 @@ if uploaded_file:
                     'total_sum': '2024'
                 }, inplace=True)
 
-                # Добавим 2023
+                # Додаємо 2023
                 top_companies['2023'] = top_companies.apply(
                     lambda row: sum_2023_dict.get(region, {}).get(row['Назва компанії'], 0),
                     axis=1
                 )
 
-                # Динамика
+                # Динаміка
                 top_companies['динаміка'] = top_companies.apply(calc_dynamic, axis=1)
 
                 total_sum_region_2024 = total_sum_dict_2024.get(region, 0)
                 total_sum_region_2023 = total_sum_dict_2023.get(region, 0)
 
-                # Строка "ВСЬОГО"
+                # Рядок "ВСЬОГО"
                 summary_row = pd.DataFrame([{
                     'Назва компанії': 'ВСЬОГО',
                     '2024': total_sum_region_2024,
@@ -295,7 +287,7 @@ if uploaded_file:
 
                 top_companies = pd.concat([summary_row, top_companies], ignore_index=True)
 
-                # Доля (числовая)
+                # Розрахунок долі
                 top_companies['share_2024_num'] = top_companies['2024'].apply(
                     lambda x: calc_share(x, total_sum_region_2024)
                 )
@@ -309,18 +301,18 @@ if uploaded_file:
                     axis=1
                 )
 
-                # Форматируем проценты
+                # Форматуємо у відсотки
                 top_companies['Доля 2024'] = top_companies['share_2024_num'].round(0).astype(int).astype(str) + '%'
                 top_companies['Доля 2023'] = top_companies['share_2023_num'].round(0).astype(int).astype(str) + '%'
                 top_companies['Прирост долі'] = top_companies['Прирост долі'].round(0).astype(int).astype(str) + '%'
 
-                # Итоговая таблица
+                # Фінальна структура
                 top_companies = top_companies[[
                     'Назва компанії', '2024', '2023', 'динаміка',
                     'Доля 2024', 'Доля 2023', 'Прирост долі'
                 ]]
 
-                # Название листа для региона
+                # Назва листа для регіону
                 base_sheet_name = f"2024_{region}"
                 sheet_name = base_sheet_name[:31]
                 original_sheet_name = sheet_name
@@ -335,6 +327,8 @@ if uploaded_file:
 
                 top_companies.to_excel(writer, sheet_name=sheet_name, index=False)
                 worksheet = writer.sheets[sheet_name]
+
+                # Автопідбір ширини стовпців
                 for i, col in enumerate(top_companies.columns, start=1):
                     max_length = max(
                         top_companies[col].astype(str).map(len).max(),
@@ -344,7 +338,7 @@ if uploaded_file:
                         worksheet.cell(row=1, column=i).column_letter
                     ].width = max_length + 2
 
-            # Создаём листы "Доля Клиента" для каждого региона
+            # Створюємо листи "Доля Клиента" для кожного регіону
             for region in merged_summary['Область']:
                 region_data = data_sheet1[data_sheet1['Регіон організатора'] == region]
 
@@ -361,14 +355,14 @@ if uploaded_file:
                     organizer = organizer_row['Організатор']
                     organizer_sum = organizer_row['total_lot']
 
-                    # Строка-організатор (будет жирным шрифтом)
+                    # Строка з організатором (жирний шрифт)
                     доля_кліента_rows.append({
                         'Організатор/Переможець': organizer,
                         'Сума лота': organizer_sum,
                         'Доля (%)': ''
                     })
 
-                    # Переможці для цього організатора
+                    # Знаходимо переможців для цього організатора
                     winners = (
                         region_data[region_data['Організатор'] == organizer]
                         .groupby('Переможець', as_index=False)
@@ -376,7 +370,7 @@ if uploaded_file:
                         .sort_values(by='total_lot', ascending=False)
                     )
 
-                    # Если нет "АМЕТРІН ФК", добавляем с 0
+                    # Якщо немає "АМЕТРІН ФК", додаємо з 0
                     if not any(winners['Переможець'] == grouped_company_name):
                         winners = pd.concat([
                             winners,
@@ -414,7 +408,7 @@ if uploaded_file:
                 доля_кліента_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 worksheet = writer.sheets[sheet_name]
 
-                # Автоподбор ширины столбцов
+                # Автопідбір ширини стовпців
                 for i, col in enumerate(доля_кліента_df.columns, start=1):
                     max_length = max(
                         доля_кліента_df[col].astype(str).map(len).max(),
@@ -424,7 +418,7 @@ if uploaded_file:
                         worksheet.cell(row=1, column=i).column_letter
                     ].width = max_length + 2
 
-                # Жирный шрифт для "Організаторів" (без отступа)
+                # Жирний шрифт для "Організаторів" (рядки без відступу)
                 bold_font = Font(bold=True)
                 for row in worksheet.iter_rows(
                         min_row=2,
@@ -436,14 +430,14 @@ if uploaded_file:
                         if not str(cell.value).startswith('    '):
                             cell.font = bold_font
 
-                # Заголовки тоже делаем жирными
+                # Заголовки теж робимо жирними
                 for cell in worksheet["1:1"]:
                     cell.font = bold_font
 
-            # Закрываем writer
+            # Закриваємо writer
             writer.close()
 
-            # Получаем байты
+            # Отримуємо байти з пам'яті
             processed_data = output.getvalue()
 
             if len(processed_data) == 0:
